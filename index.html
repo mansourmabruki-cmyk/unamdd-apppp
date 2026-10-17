@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="format-detection" content="telephone=no">
+<title>UNAMDD Mining — Carte minière CAMI</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{
+  --bg:#071a3c; --bg2:#0b245a; --panel:#0e1b36; --panel2:#13244a;
+  --gold:#f4b000; --gold2:#ffd45e; --txt:#eaf0ff; --muted:#9fb0d6;
+  --line:#223a6b; --ok:#28c76f; --warn:#ff9f43; --bad:#ea5455;
+  --blue:#2d7bf0;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:var(--bg);color:var(--txt);overflow:hidden}
+#map{position:absolute;inset:0;z-index:1;background:#0a1430}
+
+/* ---------- SPLASH ---------- */
+#splash{position:fixed;inset:0;z-index:9999;background:radial-gradient(circle at 50% 35%,#0b245a,#040d22);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s}
+#splash.hide{opacity:0;pointer-events:none}
+.splash-logo{width:150px;height:150px;animation:pop .8s ease}
+@keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+.splash-title{margin-top:18px;font-size:22px;font-weight:800;letter-spacing:.5px;color:var(--gold2)}
+.splash-sub{margin-top:6px;font-size:12.5px;color:var(--muted);text-align:center;max-width:280px;line-height:1.5}
+.splash-bar{margin-top:22px;width:180px;height:4px;border-radius:4px;background:#1b2d57;overflow:hidden}
+.splash-bar>i{display:block;height:100%;width:40%;background:linear-gradient(90deg,var(--gold),var(--gold2));animation:load 1.6s ease-in-out infinite}
+@keyframes load{0%{margin-left:-40%}100%{margin-left:100%}}
+.splash-foot{position:absolute;bottom:18px;font-size:11px;color:#5f74a8}
+
+/* ---------- TOP BAR ---------- */
+#topbar{position:absolute;top:0;left:0;right:0;z-index:800;display:flex;align-items:center;gap:10px;padding:8px 10px;
+  background:linear-gradient(180deg,rgba(7,26,60,.96),rgba(7,26,60,.78));backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+#topbar .brand{display:flex;align-items:center;gap:8px;min-width:0}
+#topbar .brand svg{width:30px;height:30px;flex:none}
+#topbar .brand b{font-size:14px;line-height:1;white-space:nowrap}
+#topbar .brand span{font-size:9.5px;color:var(--gold2);display:block;margin-top:2px}
+.sel{margin-left:auto;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 9px;font-size:12px;max-width:150px}
+.searchwrap{position:relative}
+#search{width:150px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 9px;font-size:12px}
+
+/* ---------- COORD BAR ---------- */
+#coordbar{position:absolute;top:52px;left:0;right:0;z-index:700;display:flex;gap:8px;justify-content:center;pointer-events:none}
+#coordbar .chip{pointer-events:auto;background:rgba(14,27,54,.92);border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--gold2);font-variant-numeric:tabular-nums}
+
+/* ---------- RIGHT TOOLBAR ---------- */
+#tools{position:absolute;right:10px;top:92px;z-index:750;display:flex;flex-direction:column;gap:7px}
+.tool{width:44px;height:44px;border-radius:12px;background:rgba(14,27,54,.94);border:1px solid var(--line);color:var(--txt);display:flex;align-items:center;justify-content:center;font-size:19px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.35);transition:.15s}
+.tool:active{transform:scale(.9)}
+.tool.on{background:var(--gold);color:#1a1200;border-color:var(--gold2)}
+.tool small{position:absolute}
+
+/* ---------- BOTTOM DOCK ---------- */
+#dock{position:absolute;left:10px;right:10px;bottom:12px;z-index:750;display:flex;gap:7px;overflow-x:auto;padding-bottom:2px}
+#dock::-webkit-scrollbar{display:none}
+.dbtn{flex:none;background:rgba(14,27,54,.94);border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:9px 13px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.dbtn:active{transform:scale(.96)}
+.dbtn.on{background:var(--gold);color:#1a1200}
+
+/* ---------- PANELS ---------- */
+.panel{position:absolute;z-index:900;left:0;right:0;bottom:0;max-height:76vh;background:var(--panel);border-top:2px solid var(--gold);border-radius:18px 18px 0 0;transform:translateY(110%);transition:transform .3s cubic-bezier(.2,.9,.3,1);overflow:hidden;display:flex;flex-direction:column}
+.panel.show{transform:translateY(0)}
+.panel .ph{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.panel .ph b{font-size:15px}
+.panel .ph .x{margin-left:auto;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+.panel .pb{padding:14px 16px;overflow-y:auto}
+.grip{width:40px;height:4px;border-radius:4px;background:#2a4178;margin:8px auto 0}
+
+.row{display:flex;gap:8px;margin-bottom:10px}
+.row>*{flex:1}
+.fld{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;font-size:13px}
+label.lbl{font-size:11px;color:var(--muted);display:block;margin:2px 0 5px}
+.btn{background:var(--gold);color:#1a1200;border:none;border-radius:9px;padding:11px;font-size:13.5px;font-weight:700;cursor:pointer;width:100%}
+.btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+.btn:active{transform:scale(.98)}
+
+.lyr{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--line)}
+.lyr:last-child{border-bottom:none}
+.lyr .ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+.lyr .tx{flex:1;min-width:0}
+.lyr .tx b{font-size:13.5px;display:block}
+.lyr .tx small{font-size:11px;color:var(--muted)}
+.sw{position:relative;width:44px;height:25px;border-radius:25px;background:#223a6b;flex:none;cursor:pointer;transition:.2s}
+.sw.on{background:var(--gold)}
+.sw i{position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on i{left:22px}
+
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.card h4{margin:0 0 7px;font-size:13.5px;color:var(--gold2)}
+.kv{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px dashed #233a67}
+.kv:last-child{border:none}
+.kv span:first-child{color:var(--muted)}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.b-ok{background:rgba(40,199,111,.18);color:#4be089}
+.b-warn{background:rgba(255,159,67,.18);color:#ffb976}
+.b-bad{background:rgba(234,84,85,.18);color:#ff8687}
+.b-blue{background:rgba(45,123,240,.18);color:#78acff}
+
+.toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);z-index:9500;background:#0a1430;border:1px solid var(--gold);color:var(--txt);padding:11px 18px;border-radius:30px;font-size:12.5px;opacity:0;transition:.3s;pointer-events:none;max-width:90%;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.net{position:absolute;left:10px;top:92px;z-index:750;display:flex;align-items:center;gap:6px;background:rgba(14,27,54,.94);border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:11px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.dot.off{background:var(--bad)}
+
+.leaflet-control-attribution{font-size:9px!important;background:rgba(7,26,60,.7)!important;color:#8ea3d0!important}
+.leaflet-bar a{background:#0e1b36!important;color:#eaf0ff!important;border-color:#223a6b!important}
+.minilegend{font-size:10px;line-height:1.6}
+.minilegend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);margin:2px 4px 2px 0}
+
+/* ---------- LOGO FRAME (badge pro) ---------- */
+.logoframe{position:relative;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;
+  background:conic-gradient(from 0deg,#f4b000,#ffd45e,#f4b000,#b57d00,#ffd45e,#f4b000);padding:5px;
+  box-shadow:0 0 0 3px #071a3c,0 0 22px rgba(244,176,0,.55),0 8px 22px rgba(0,0,0,.5)}
+.logoframe::after{content:'';position:absolute;inset:5px;border-radius:50%;border:2px solid rgba(255,255,255,.25);pointer-events:none}
+.logoframe img{border-radius:50%;display:block;background:#0b245a;object-fit:cover}
+.logoframe.spin{animation:spin 14s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.logoframe.spin img{animation:spin 14s linear infinite reverse}
+.brand .logoframe{padding:2px;box-shadow:0 0 0 2px #071a3c,0 0 8px rgba(244,176,0,.5)}
+.brand .logoframe img{width:30px;height:30px}
+.langsel{background:var(--panel2);border:1px solid var(--line);color:var(--gold2);border-radius:8px;padding:7px 6px;font-size:12px;font-weight:700}
+
+/* ---------- QR ---------- */
+.qrbox{background:#fff;border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:center;margin:0 auto;width:fit-content}
+.qrbox svg,.qrbox img{display:block;width:150px;height:150px}
+.qrbox{flex-direction:column}
+.qrcap{margin-top:8px;color:#0b245a;font-size:12px;font-weight:700;text-align:center}
+.qrcap small{display:block;font-weight:500;color:#4a5a7a;margin-top:2px}
+
+/* ---------- DASHBOARD ---------- */
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.kpi .k{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+.kpi .k b{display:block;font-size:24px;color:var(--gold2);line-height:1.1}
+.kpi .k small{font-size:10.5px;color:var(--muted)}
+.bar{margin:7px 0}
+.bar .bl{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px}
+.bar .bt{height:9px;border-radius:6px;background:#1b2d57;overflow:hidden}
+.bar .bf{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--gold),var(--gold2))}
+
+/* ---------- INCIDENT ---------- */
+.sevpick{display:flex;gap:6px}
+.sevpick .sv{flex:1;text-align:center;padding:8px 0;border-radius:9px;border:1px solid var(--line);background:var(--panel2);font-size:11.5px;cursor:pointer}
+.sevpick .sv.on{background:var(--gold);color:#1a1200;font-weight:700;border-color:var(--gold2)}
+.inc{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:9px}
+.incdot{width:12px;height:12px;border-radius:50%;flex:none}
+</style>
+</head>
+<body>
+<!-- ===== SPLASH ===== -->
+<div id="splash">
+  <div class="logoframe spin"><img src="logo.jpg" width="148" height="148" alt="UNAMDD Mining Sarl"></div>
+  <div class="splash-title">UNAMDD Mining Sarl</div>
+  <div class="splash-sub">Cartographie minière du cadastre CAMI — République Démocratique du Congo<br>Exploration alluvionnaire • Hors-ligne d'abord</div>
+  <div class="splash-bar"><i></i></div>
+  <div class="splash-foot">Chef du bureau technique : Ir MANSOUR MAB</div>
+</div>
+
+<div id="map"></div>
+
+<!-- ===== TOP BAR ===== -->
+<div id="topbar">
+  <div class="brand">
+    <div class="logoframe"><img src="logo.jpg" alt="UNAMDD"></div>
+    <div><b>UNAMDD Mining</b><span id="brandSub">Carte CAMI • RDC</span></div>
+  </div>
+  <div class="searchwrap"><input id="search" placeholder="🔍 Code / lieu…"></div>
+  <select class="langsel" id="langSel"><option value="fr">FR</option><option value="en">EN</option><option value="sw">SW</option></select>
+  <select class="sel" id="provSel"><option value="all">Toutes provinces</option></select>
+</div>
+
+<!-- ===== COORD BAR ===== -->
+<div id="coordbar">
+  <div class="chip" id="coordChip">—</div>
+</div>
+
+<!-- ===== NET STATUS ===== -->
+<div class="net" id="netBox"><span class="dot" id="netDot"></span><span id="netTxt">Réseau</span></div>
+
+<!-- ===== RIGHT TOOLBAR ===== -->
+<div id="tools">
+  <div class="tool" id="tGps" title="Ma position">📍</div>
+  <div class="tool" id="tLayers" title="Couches">🗺️</div>
+  <div class="tool" id="tMarker" title="Point">📌</div>
+  <div class="tool" id="tDist" title="Mesurer distance">📏</div>
+  <div class="tool" id="tArea" title="Mesurer surface">▱</div>
+  <div class="tool" id="tTrack" title="Enregistrer trace">⏺️</div>
+  <div class="tool" id="tGrid" title="Grille">▦</div>
+</div>
+
+<!-- ===== BOTTOM DOCK ===== -->
+<div id="dock">
+  <div class="dbtn" id="dLayers">🧱 Couches</div>
+  <div class="dbtn" id="dGoto">🎯 Coordonnées</div>
+  <div class="dbtn" id="dIncident">🚨 Incident</div>
+  <div class="dbtn" id="dDash">📊 Tableau de bord</div>
+  <div class="dbtn" id="dSurvey">📝 Relevé</div>
+  <div class="dbtn" id="dIA">🧠 Géo-IA</div>
+  <div class="dbtn" id="dData">📂 Données</div>
+  <div class="dbtn" id="dOffline">⬇️ Hors-ligne</div>
+  <div class="dbtn" id="dAbout">ℹ️ À propos</div>
+</div>
+
+<!-- ===== PANEL: LAYERS ===== -->
+<div class="panel" id="pLayers">
+  <div class="grip"></div>
+  <div class="ph"><b>🧱 Couches &amp; fonds de carte</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <label class="lbl">FOND DE CARTE</label>
+    <div class="lyr"><div class="ic" style="background:#1b3a2e">🗺️</div><div class="tx"><b>Plan (OSM)</b><small>Routes, villes, villages</small></div><div class="sw on" data-base="osm"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#2a3a1b">🛰️</div><div class="tx"><b>Satellite</b><small>Imagerie Esri (type Google Earth)</small></div><div class="sw" data-base="sat"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#3a2a1b">🌍</div><div class="tx"><b>Hybride</b><small>Satellite + étiquettes</small></div><div class="sw" data-base="hyb"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#1b2a3a">⛰️</div><div class="tx"><b>Relief / Terrain</b><small>Topographie</small></div><div class="sw" data-base="ter"><i></i></div></div>
+    <label class="lbl" style="margin-top:14px">COUCHES MÉTIER</label>
+    <div class="lyr"><div class="ic" style="background:#2d2a0e">⬛</div><div class="tx"><b>Carrés miniers CAMI</b><small>Périmètres du cadastre</small></div><div class="sw on" data-ov="cami"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#2a0e1b">🔴</div><div class="tx"><b>Sites IPIS</b><small>Sites miniers artisanaux</small></div><div class="sw on" data-ov="ipis"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#0e2a2a">🌊</div><div class="tx"><b>Rivières &amp; vallées alluviales</b><small>Zones d'exploration prioritaires</small></div><div class="sw on" data-ov="val"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#1b1b2a">🏘️</div><div class="tx"><b>Villages &amp; localités</b><small>Repères terrain</small></div><div class="sw on" data-ov="vil"><i></i></div></div>
+    <div class="lyr"><div class="ic" style="background:#1b2433">◱</div><div class="tx"><b>Limites de provinces</b><small>Découpage administratif</small></div><div class="sw" data-ov="prov"><i></i></div></div>
+    <div class="card" style="margin-top:12px"><h4>Légende carrés CAMI</h4><div class="minilegend"><i style="background:#28c76f"></i>Valide (PR/PE actif)&nbsp;&nbsp;<i style="background:#ff9f43"></i>En instruction<br><i style="background:#ea5455"></i>Déchu / expiré&nbsp;&nbsp;<i style="background:#2d7bf0"></i>Zone d'exploration IA</div></div>
+  </div>
+</div>
+
+<!-- ===== PANEL: GOTO / COORD ===== -->
+<div class="panel" id="pGoto">
+  <div class="grip"></div>
+  <div class="ph"><b>🎯 Aller aux coordonnées</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <label class="lbl">FORMAT</label>
+    <div class="row"><select class="fld" id="coordFmt"><option value="dd">Degrés décimaux (DD)</option><option value="dms">Degrés minutes secondes (DMS)</option></select></div>
+    <div class="row"><div><label class="lbl">Latitude</label><input class="fld" id="gLat" placeholder="-6.1500"></div><div><label class="lbl">Longitude</label><input class="fld" id="gLng" placeholder="23.6000"></div></div>
+    <button class="btn" id="gGo">Centrer la carte ici</button>
+    <div class="card" style="margin-top:12px"><h4>Position du centre de la carte</h4>
+      <div class="kv"><span>DD</span><b id="ctrDD">—</b></div>
+      <div class="kv"><span>DMS</span><b id="ctrDMS">—</b></div>
+      <div class="kv"><span>Zoom</span><b id="ctrZ">—</b></div>
+    </div>
+    <button class="btn sec" id="gMark" style="margin-top:10px">📌 Poser un point ici</button>
+    <button class="btn sec" id="gQR" style="margin-top:10px">🔳 QR code de ces coordonnées</button>
+    <div class="qrbox" id="gQRbox" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ===== PANEL: SITE DETAIL ===== -->
+<div class="panel" id="pSite">
+  <div class="grip"></div>
+  <div class="ph"><b id="siteName">Fiche site</b><span class="x" data-close>×</span></div>
+  <div class="pb" id="siteBody"></div>
+</div>
+
+<!-- ===== PANEL: SURVEY ===== -->
+<div class="panel" id="pSurvey">
+  <div class="grip"></div>
+  <div class="ph"><b>📝 Relevé de terrain</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <label class="lbl">INTITULÉ DU POINT</label>
+    <input class="fld" id="svName" placeholder="Ex : Puits alluvial Lualaba 03">
+    <div class="row" style="margin-top:10px"><div><label class="lbl">Type</label><select class="fld" id="svType"><option>Gisement alluvial</option><option>Puits artisanal</option><option>Comptoir</option><option>Berge / rivière</option><option>Point de contrôle</option><option>Autre</option></select></div><div><label class="lbl">Minerai</label><select class="fld" id="svMin"><option>Or</option><option>Coltan</option><option>Cassitérite</option><option>Diamant</option><option>Wolframite</option><option>Autre</option></select></div></div>
+    <label class="lbl" style="margin-top:10px">COORDONNÉES (GPS auto)</label>
+    <input class="fld" id="svCoord" placeholder="Appuyez sur 📍 puis Enregistrer" readonly>
+    <label class="lbl" style="margin-top:10px">OBSERVATIONS</label>
+    <textarea class="fld" id="svNote" rows="3" placeholder="État du site, accessibilité, effectifs, remarques…"></textarea>
+    <div class="row" style="margin-top:10px"><button class="btn sec" id="svGps">📍 Capturer GPS</button><button class="btn" id="svSave">💾 Enregistrer</button></div>
+    <div id="svList" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ===== PANEL: GEO-IA ===== -->
+<div class="panel" id="pIA">
+  <div class="grip"></div>
+  <div class="ph"><b>🧠 Géo-IA (hors ligne)</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <div class="card"><h4>Analyse de potentiel alluvial</h4><small style="color:var(--muted);font-size:11.5px">Moteur de règles embarqué : croise proximité des cours d'eau, vallées, anciens lits, sites IPIS connus et statut CAMI — sans connexion Internet.</small></div>
+    <button class="btn" id="iaRun">▶️ Analyser la zone visible</button>
+    <div id="iaOut" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ===== PANEL: DATA (import/export) ===== -->
+<div class="panel" id="pData">
+  <div class="grip"></div>
+  <div class="ph"><b>📂 Données — import / export</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <div class="card"><h4>Exporter mes relevés &amp; points</h4>
+      <div class="row"><button class="btn sec" id="exGeo">GeoJSON</button><button class="btn sec" id="exGpx">GPX</button><button class="btn sec" id="exKml">KML</button></div>
+    </div>
+    <div class="card"><h4>Importer un fichier</h4><small style="color:var(--muted);font-size:11.5px">Formats supportés : GeoJSON, GPX, KML.</small>
+      <input class="fld" type="file" id="imp" accept=".geojson,.json,.gpx,.kml" style="margin-top:8px">
+    </div>
+    <div class="card"><h4>Synchronisation CAMI</h4>
+      <div class="kv"><span>Dernière synchro</span><b id="syncTime">—</b></div>
+      <div class="kv"><span>Carrés chargés</span><b id="syncCnt">—</b></div>
+      <button class="btn" id="syncBtn" style="margin-top:10px">🔄 Actualiser les carrés</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PANEL: OFFLINE ===== -->
+<div class="panel" id="pOffline">
+  <div class="grip"></div>
+  <div class="ph"><b>⬇️ Cartes hors-ligne</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <div class="card"><h4>Pré-télécharger la zone visible</h4><small style="color:var(--muted);font-size:11.5px">Enregistre le fond de carte de la zone affichée pour une consultation sans réseau sur le terrain.</small>
+      <div class="kv" style="margin-top:8px"><span>Zone estimée</span><b id="offArea">—</b></div>
+      <div class="kv"><span>Taille estimée</span><b id="offSize">—</b></div>
+      <button class="btn" id="offBtn" style="margin-top:10px">⬇️ Enregistrer cette zone</button>
+    </div>
+    <div class="card"><h4>Zones enregistrées</h4><div id="offList"><small style="color:var(--muted)">Aucune zone enregistrée.</small></div></div>
+    <small style="color:var(--muted);font-size:11px">Astuce : en production, le fond est embarqué en MBTiles/PMTiles pour un fonctionnement 100 % hors-ligne. Le GPS, lui, fonctionne toujours sans réseau.</small>
+  </div>
+</div>
+
+<!-- ===== PANEL: ABOUT ===== -->
+<div class="panel" id="pAbout">
+  <div class="grip"></div>
+  <div class="ph"><b>ℹ️ À propos</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <div class="card" style="text-align:center">
+      <div class="logoframe" style="margin-bottom:6px"><img src="logo.jpg" width="88" height="88" alt="UNAMDD Mining Sarl"></div>
+      <h4 style="margin:8px 0 2px">UNAMDD Mining Sarl</h4>
+      <small style="color:var(--muted)">Carte minière CAMI — v1.0.0</small>
+    </div>
+    <div class="card"><div class="kv"><span>Périmètre</span><b>6 provinces Est/NE</b></div><div class="kv"><span>Métier</span><b>Exploitation alluvionnaire</b></div><div class="kv"><span>Mode</span><b>Hors-ligne d'abord</b></div></div>
+    <div class="card"><h4>Provinces couvertes</h4><div><span class="tag">Tanganyika</span><span class="tag">Maniema</span><span class="tag">Ituri</span><span class="tag">Haut-Uele</span><span class="tag">Bas-Uele</span><span class="tag">Sud-Kivu</span></div></div>
+    <div class="card" style="text-align:center"><small style="color:var(--muted)">Chef du bureau technique</small><br><b style="color:var(--gold2)">Ir MANSOUR MAB</b></div>
+    <small style="color:var(--muted);font-size:11px">Données IPIS/CAMI de démonstration. En production : flux officiels CAMI, base SQLite locale et backend de synchronisation.</small>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ===== PANEL: INCIDENT ===== -->
+<div class="panel" id="pIncident">
+  <div class="grip"></div>
+  <div class="ph"><b>🚨 Rapport d'incident</b><span class="x" data-close>×</span></div>
+  <div class="pb">
+    <label class="lbl">TYPE D'INCIDENT</label>
+    <select class="fld" id="incType"><option>Conflit / sécurité</option><option>Accident sur site</option><option>Exploitation illégale</option><option>Pollution / environnement</option><option>Éboulement / effondrement</option><option>Litige foncier</option><option>Autre</option></select>
+    <label class="lbl" style="margin-top:10px">GRAVITÉ</label>
+    <div class="sevpick" id="incSev">
+      <div class="sv s1" data-sev="1">Faible</div>
+      <div class="sv s2 on" data-sev="2">Moyenne</div>
+      <div class="sv s3" data-sev="3">Élevée</div>
+      <div class="sv s4" data-sev="4">Critique</div>
+    </div>
+    <label class="lbl" style="margin-top:10px">LOCALISATION (GPS auto)</label>
+    <input class="fld" id="incCoord" placeholder="Appuyez sur 📍 Capturer" readonly>
+    <label class="lbl" style="margin-top:10px">DESCRIPTION</label>
+    <textarea class="fld" id="incDesc" rows="3" placeholder="Décrivez l'incident, les personnes/matériels concernés, l'heure…"></textarea>
+    <div class="row" style="margin-top:10px"><button class="btn sec" id="incGps">📍 Capturer GPS</button><button class="btn" id="incSave">🚨 Signaler</button></div>
+    <div id="incList" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ===== PANEL: DASHBOARD ===== -->
+<div class="panel" id="pDash">
+  <div class="grip"></div>
+  <div class="ph"><b>📊 Tableau de bord — Carrés miniers</b><span class="x" data-close>×</span></div>
+  <div class="pb" id="dashBody"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="qrcode.js"></script>
+<script>
+/* ============ DONNEES (demo) ============ */
+const PROV = {
+  tanganyika:{n:'Tanganyika',c:[-6.0,27.9],z:7},
+  maniema:{n:'Maniema',c:[-2.9,25.9],z:7},
+  ituri:{n:'Ituri',c:[1.5,29.8],z:7},
+  hautuele:{n:'Haut-Uele',c:[2.8,28.0],z:7},
+  basuele:{n:'Bas-Uele',c:[3.5,24.9],z:7},
+  sudkivu:{n:'Sud-Kivu',c:[-2.5,28.8],z:8}
+};
+const STAT = {valide:{c:'#28c76f',l:'Valide',b:'b-ok'},instruction:{c:'#ff9f43',l:'En instruction',b:'b-warn'},dechu:{c:'#ea5455',l:'Déchu/expiré',b:'b-bad'}};
+function rng(s){return function(){s=(s*16807)%2147483647;return (s-1)/2147483646;};}
+function genCami(){
+  const out=[]; let id=1;
+  for(const k in PROV){const p=PROV[k];const r=rng(id*97+7);
+    const nb=6+Math.floor(r()*5);
+    for(let i=0;i<nb;i++){
+      const lat=p.c[0]+(r()-.5)*2.2, lng=p.c[1]+(r()-.5)*2.2;
+      const d=0.09;
+      const sv=r(); const st= sv<.5?'valide': sv<.8?'instruction':'dechu';
+      const typ= r()<.5?'PR':'PE';
+      out.push({id:'CAMI-'+(1000+id), prov:k, provN:p.n, stat:st, type:typ,
+        titulaire:['Société Alpha SARL','Coop. Minière Est','Groupe Lualaba','Kivu Resources','Artisanal Co-op'][Math.floor(r()*5)],
+        minerai:['Or','Coltan','Cassitérite','Diamant'][Math.floor(r()*4)],
+        superf:(Math.round((20+r()*180))),
+        poly:[[lat,lng],[lat,lng+d],[lat-d,lng+d],[lat-d,lng]]});
+      id++;
+    }
+  }
+  return out;
+}
+function genIpis(){
+  const out=[]; let id=1;
+  for(const k in PROV){const p=PROV[k];const r=rng(id*53+3);
+    const nb=4+Math.floor(r()*4);
+    for(let i=0;i<nb;i++){
+      out.push({id:'IPIS-'+(200+id),prov:k,lat:p.c[0]+(r()-.5)*2.0,lng:p.c[1]+(r()-.5)*2.0,
+        nom:'Site '+['Mushenge','Lomami','Elila','Ulindi','Aruwimi','Kibali'][Math.floor(r()*6)]+' '+(i+1),
+        minerai:['Or','Coltan','Cassitérite','Diamant'][Math.floor(r()*4)],
+        mineurs: 50+Math.floor(r()*600), tension: r()<.3});
+      id++;
+    }
+  }
+  return out;
+}
+function genRivers(){
+  const out=[];
+  for(const k in PROV){const p=PROV[k];const r=rng(k.length*131+11);
+    const pts=[]; let lat=p.c[0]-1, lng=p.c[1]-1;
+    for(let i=0;i<9;i++){lat+=0.25+(r()-.5)*.2; lng+=0.22+(r()-.5)*.25; pts.push([lat,lng]);}
+    out.push({prov:k,nom:'Rivière '+p.n,pts:pts});
+  }
+  return out;
+}
+const CAMI=genCami(), IPIS=genIpis(), RIV=genRivers();
+const VIL=[]; for(const k in PROV){const p=PROV[k];const r=rng(k.length*211+5);for(let i=0;i<5;i++){VIL.push({lat:p.c[0]+(r()-.5)*2.3,lng:p.c[1]+(r()-.5)*2.3,n:['Kasongo','Lubutu','Mambasa','Watsa','Shabunda','Kabambare','Punia'][Math.floor(r()*7)]});}}
+
+/* ============ CARTE ============ */
+const bases={
+  osm:L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}),
+  sat:L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagerie © Esri'}),
+  hyb:L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'})
+  ]),
+  ter:L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'© OpenTopoMap'})
+};
+const map=L.map('map',{zoomControl:false,center:[-1.5,27.5],zoom:6,attributionControl:true});
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.control.scale({position:'bottomleft',imperial:false}).addTo(map);
+let curBase='osm'; bases.osm.addTo(map);
+function setBase(k){map.removeLayer(bases[curBase]);curBase=k;bases[k].addTo(map);bases[k].bringToBack&&bases[k].bringToBack();}
+
+/* ============ HELPERS ============ */
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2600);}
+function dd(v){return (v>=0?'':'-')+Math.abs(v).toFixed(5);}
+function dms(v,ns){const a=Math.abs(v),d=Math.floor(a),m=Math.floor((a-d)*60),s=(((a-d)*60-m)*60).toFixed(1);const h=v>=0?ns[0]:ns[1];return `${d}°${m}'${s}"${h}`;}
+function fmtLatLng(lat,lng){return dd(lat)+', '+dd(lng);}
+
+/* ============ OVERLAYS ============ */
+const ov={cami:L.layerGroup(),ipis:L.layerGroup(),val:L.layerGroup(),vil:L.layerGroup(),prov:L.layerGroup()};
+function drawCami(){ov.cami.clearLayers();CAMI.forEach(c=>{
+  const col=STAT[c.stat].c;
+  const pg=L.polygon(c.poly,{color:col,weight:1.5,fillColor:col,fillOpacity:.28});
+  pg.on('click',()=>openSite(c));
+  ov.cami.addLayer(pg);
+});}
+function drawIpis(){ov.ipis.clearLayers();IPIS.forEach(s=>{
+  const m=L.circleMarker([s.lat,s.lng],{radius:6,color:'#fff',weight:1,fillColor:s.tension?'#ea5455':'#ff5e7a',fillOpacity:.95});
+  m.on('click',()=>openIpis(s));
+  ov.ipis.addLayer(m);
+});}
+function drawRiv(){ov.val.clearLayers();RIV.forEach(r=>{
+  ov.val.addLayer(L.polyline(r.pts,{color:'#2fb6ff',weight:2.2,opacity:.9}));
+  // bande de vallée alluviale (corridor ~5-10 km) en pointillé
+  ov.val.addLayer(L.polyline(r.pts,{color:'#2fb6ff',weight:14,opacity:.12}));
+});}
+function drawVil(){ov.vil.clearLayers();VIL.forEach(v=>{
+  const m=L.marker([v.lat,v.lng],{icon:L.divIcon({className:'',html:'<div style="background:#13244a;border:1px solid #2fb6ff;color:#cfe4ff;font-size:10px;padding:1px 5px;border-radius:5px;white-space:nowrap">🏘️ '+v.n+'</div>',iconSize:[0,0]})});
+  ov.vil.addLayer(m);
+});}
+function drawProv(){ov.prov.clearLayers();for(const k in PROV){const p=PROV[k];const d=1.1;
+  ov.prov.addLayer(L.rectangle([[p.c[0]-d,p.c[1]-d],[p.c[0]+d,p.c[1]+d]],{color:'#f4b000',weight:1.5,dashArray:'6 5',fill:false}));
+  ov.prov.addLayer(L.marker(p.c,{icon:L.divIcon({html:'<div style="color:#ffd45e;font-weight:800;font-size:12px;text-shadow:0 1px 3px #000">'+p.n+'</div>',iconSize:[0,0]})}));
+}}
+drawCami();drawIpis();drawRiv();drawVil();drawProv();
+ov.cami.addTo(map);ov.ipis.addTo(map);ov.val.addTo(map);ov.vil.addTo(map);
+
+/* ============ FICHE SITE CAMI ============ */
+function openSite(c){
+  const st=STAT[c.stat];
+  $('#siteName').textContent=c.id;
+  $('#siteBody').innerHTML=`
+    <div class="card"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="badge ${st.b}">${st.l}</span><span class="badge b-blue">${c.type}</span></div>
+      <div class="kv"><span>Titulaire</span><b>${c.titulaire}</b></div>
+      <div class="kv"><span>Province</span><b>${c.provN}</b></div>
+      <div class="kv"><span>Minerai</span><b>${c.minerai}</b></div>
+      <div class="kv"><span>Superficie</span><b>${c.superf} carrés</b></div>
+      <div class="kv"><span>Centre</span><b>${fmtLatLng(c.poly[0][0]-0.045,c.poly[0][1]+0.045)}</b></div>
+    </div>
+    <button class="btn sec" id="siteZoom">🔎 Zoomer sur le périmètre</button>
+    <button class="btn sec" id="siteQR" style="margin-top:8px">🔳 QR code du carré</button>
+    <div class="qrbox" id="siteQRbox" style="display:none"></div>`;
+  show('pSite');
+  const clat=c.poly[0][0]-0.045, clng=c.poly[0][1]+0.045;
+  setTimeout(()=>{const z=$('#siteZoom'); if(z) z.onclick=()=>{map.fitBounds(c.poly);hideAll();};
+    const q=$('#siteQR'); if(q) q.onclick=()=>{const bx=$('#siteQRbox');bx.innerHTML=makeQR(geoURI(clat,clng,c.id))+'<div class="qrcap">'+c.id+' · '+fmtLatLng(clat,clng)+'</div>';bx.style.display='block';};
+  },50);
+}
+function openIpis(s){
+  $('#siteName').textContent=s.nom;
+  $('#siteBody').innerHTML=`
+    <div class="card"><div style="margin-bottom:8px"><span class="badge ${s.tension?'b-bad':'b-ok'}">${s.tension?'Zone sensible':'Zone calme'}</span></div>
+    <div class="kv"><span>Réf. IPIS</span><b>${s.id}</b></div>
+    <div class="kv"><span>Minerai</span><b>${s.minerai}</b></div>
+    <div class="kv"><span>Mineurs estimés</span><b>${s.mineurs}</b></div>
+    <div class="kv"><span>Coordonnées</span><b>${fmtLatLng(s.lat,s.lng)}</b></div></div>
+    <button class="btn sec" id="ipisQR">🔳 QR code du site</button>
+    <div class="qrbox" id="ipisQRbox" style="display:none"></div>`;
+  show('pSite');
+  setTimeout(()=>{const q=$('#ipisQR'); if(q) q.onclick=()=>{const bx=$('#ipisQRbox');bx.innerHTML=makeQR(geoURI(s.lat,s.lng,s.nom))+'<div class="qrcap">'+s.nom+' · '+fmtLatLng(s.lat,s.lng)+'</div>';bx.style.display='block';};},50);
+}
+
+/* ============ PANELS / DOCK ============ */
+function hideAll(){$$('.panel').forEach(p=>p.classList.remove('show'));}
+function show(id){const el=$('#'+id);const open=el.classList.contains('show');hideAll();if(!open)el.classList.add('show');}
+$$('[data-close]').forEach(x=>x.addEventListener('click',hideAll));
+map.on('click',()=>{ /* ne ferme pas les panneaux pour laisser le travail terrain */ });
+const dockMap={dLayers:'pLayers',dGoto:'pGoto',dSurvey:'pSurvey',dIA:'pIA',dData:'pData',dOffline:'pOffline',dAbout:'pAbout'};
+for(const b in dockMap){$('#'+b).addEventListener('click',()=>{refreshCtr();show(dockMap[b]);});}
+$('#dIncident').addEventListener('click',()=>{renderInc();show('pIncident');});
+$('#dDash').addEventListener('click',()=>{renderDash();show('pDash');});
+$('#tLayers').addEventListener('click',()=>show('pLayers'));
+
+/* base + overlay switches */
+$$('.sw[data-base]').forEach(sw=>sw.addEventListener('click',()=>{
+  $$('.sw[data-base]').forEach(s=>s.classList.remove('on'));sw.classList.add('on');setBase(sw.dataset.base);
+}));
+$$('.sw[data-ov]').forEach(sw=>sw.addEventListener('click',()=>{
+  const k=sw.dataset.ov;sw.classList.toggle('on');
+  if(sw.classList.contains('on'))ov[k].addTo(map);else map.removeLayer(ov[k]);
+}));
+
+/* ============ COORD DISPLAY ============ */
+map.on('mousemove',e=>{$('#coordChip').textContent=fmtLatLng(e.latlng.lat,e.latlng.lng);});
+function refreshCtr(){const c=map.getCenter();$('#ctrDD').textContent=fmtLatLng(c.lat,c.lng);$('#ctrDMS').textContent=dms(c.lat,['N','S'])+' '+dms(c.lng,['E','O']);$('#ctrZ').textContent=map.getZoom();}
+map.on('moveend',()=>{refreshCtr();const c=map.getCenter();$('#coordChip').textContent=fmtLatLng(c.lat,c.lng);});
+
+/* ============ GOTO ============ */
+$('#gGo').addEventListener('click',()=>{
+  const la=parseFloat($('#gLat').value), ln=parseFloat($('#gLng').value);
+  if(isNaN(la)||isNaN(ln)){toast('Coordonnées invalides');return;}
+  map.setView([la,ln],13);hideAll();toast('Centré sur '+fmtLatLng(la,ln));
+});
+$('#gMark').addEventListener('click',()=>{const c=map.getCenter();addMarker(c.lat,c.lng,'Point');hideAll();});
+
+/* ============ QR CODES ============ */
+function makeQR(text){
+  try{
+    const q=qrcode(0,'M');q.addData(text);q.make();
+    return q.createImgTag(4,8);
+  }catch(e){return '<small style="color:var(--muted)">QR indisponible</small>';}
+}
+function geoURI(lat,lng,label){
+  return 'geo:'+lat.toFixed(6)+','+lng.toFixed(6)+(label?('?q='+lat.toFixed(6)+','+lng.toFixed(6)+'('+encodeURIComponent(label)+')'):'');
+}
+$('#gQR').addEventListener('click',()=>{
+  const c=map.getCenter();const box=$('#gQRbox');
+  const uri=geoURI(c.lat,c.lng,'UNAMDD');
+  box.innerHTML=makeQR(uri)+'<div class="qrcap">'+fmtLatLng(c.lat,c.lng)+'<br><small>Scannez pour ouvrir dans une app GPS</small></div>';
+  box.style.display='block';
+});
+
+/* ============ PROVINCE / SEARCH ============ */
+const ps=$('#provSel');for(const k in PROV){const o=document.createElement('option');o.value=k;o.textContent=PROV[k].n;ps.appendChild(o);}
+ps.addEventListener('change',()=>{const v=ps.value;if(v==='all'){map.setView([-1.5,27.5],6);}else{map.setView(PROV[v].c,PROV[v].z);}});
+$('#search').addEventListener('keydown',e=>{if(e.key!=='Enter')return;const q=e.target.value.trim().toLowerCase();if(!q)return;
+  const hit=CAMI.find(c=>c.id.toLowerCase().includes(q))||IPIS.find(s=>s.nom.toLowerCase().includes(q)||s.id.toLowerCase().includes(q));
+  if(hit){if(hit.poly){map.fitBounds(hit.poly);openSite(hit);}else{map.setView([hit.lat,hit.lng],13);openIpis(hit);}}
+  else{const pk=Object.keys(PROV).find(k=>PROV[k].n.toLowerCase().includes(q));if(pk){map.setView(PROV[pk].c,PROV[pk].z);}else toast('Aucun résultat');}
+});
+
+/* ============ GPS ============ */
+let gpsMarker=null,gpsAcc=null,lastFix=null,follow=false;
+$('#tGps').addEventListener('click',()=>{
+  if(!navigator.geolocation){toast('GPS non disponible');return;}
+  $('#tGps').classList.add('on');toast('Localisation…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const la=p.coords.latitude,ln=p.coords.longitude,ac=p.coords.accuracy;lastFix={la,ln,ac};
+    if(gpsMarker){map.removeLayer(gpsMarker);map.removeLayer(gpsAcc);}
+    gpsAcc=L.circle([la,ln],{radius:ac,color:'#2d7bf0',fillColor:'#2d7bf0',fillOpacity:.12,weight:1}).addTo(map);
+    gpsMarker=L.marker([la,ln],{icon:L.divIcon({html:'<div style="width:18px;height:18px;background:#2d7bf0;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #2d7bf0"></div>',iconSize:[18,18],className:''})}).addTo(map);
+    map.setView([la,ln],15);$('#tGps').classList.remove('on');
+    toast('Position : '+fmtLatLng(la,ln)+' (±'+Math.round(ac)+' m)');
+  },err=>{$('#tGps').classList.remove('on');toast('GPS : '+err.message);},{enableHighAccuracy:true,timeout:12000});
+});
+
+/* ============ NETWORK ============ */
+function net(){const on=navigator.onLine;$('#netDot').classList.toggle('off',!on);$('#netTxt').textContent=on?'En ligne':'Hors-ligne';}
+window.addEventListener('online',()=>{net();toast('Réseau détecté — synchro possible');});
+window.addEventListener('offline',()=>{net();toast('Hors-ligne — GPS et carte locale actifs');});
+net();
+
+/* ============ SPLASH ============ */
+setTimeout(()=>{$('#splash').classList.add('hide');refreshCtr();},2200);
+
+/* ============ MARQUEURS UTILISATEUR ============ */
+const userLayer=L.layerGroup().addTo(map);
+let markers=JSON.parse(localStorage.getItem('umm_markers')||'[]');
+function saveMarkers(){localStorage.setItem('umm_markers',JSON.stringify(markers));}
+function addMarker(lat,lng,label){
+  markers.push({lat,lng,label:label||'Point',t:Date.now()});saveMarkers();renderMarkers();toast('Point ajouté');
+}
+function renderMarkers(){userLayer.clearLayers();markers.forEach((m,i)=>{
+  const mk=L.marker([m.lat,m.lng],{icon:L.divIcon({html:'<div style="font-size:22px;filter:drop-shadow(0 1px 2px #000)">📌</div>',iconSize:[22,22],iconAnchor:[11,20],className:''})});
+  mk.bindPopup('<b>'+m.label+'</b><br>'+fmtLatLng(m.lat,m.lng)+'<br><a href="#" data-del="'+i+'">Supprimer</a>');
+  mk.on('popupopen',e=>{const a=e.popup._contentNode.querySelector('[data-del]');if(a)a.addEventListener('click',ev=>{ev.preventDefault();markers.splice(i,1);saveMarkers();renderMarkers();map.closePopup();});});
+  userLayer.addLayer(mk);
+});}
+renderMarkers();
+let markMode=false;
+$('#tMarker').addEventListener('click',()=>{markMode=!markMode;$('#tMarker').classList.toggle('on',markMode);toast(markMode?'Touchez la carte pour poser un point':'Mode point désactivé');});
+
+/* ============ MESURE DISTANCE / SURFACE ============ */
+let measMode=null,measPts=[],measLayer=L.layerGroup().addTo(map);
+function resetMeas(){measPts=[];measLayer.clearLayers();}
+function haversine(a,b){const R=6371,toR=x=>x*Math.PI/180;const dLa=toR(b[0]-a[0]),dLn=toR(b[1]-a[1]);const h=Math.sin(dLa/2)**2+Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function polyArea(pts){if(pts.length<3)return 0;let s=0;const R=6378137;const toR=x=>x*Math.PI/180;for(let i=0;i<pts.length;i++){const p1=pts[i],p2=pts[(i+1)%pts.length];s+=toR(p2[1]-p1[1])*(2+Math.sin(toR(p1[0]))+Math.sin(toR(p2[0])));}return Math.abs(s*R*R/2);}
+function redrawMeas(){measLayer.clearLayers();if(measPts.length===0)return;
+  measPts.forEach(p=>measLayer.addLayer(L.circleMarker(p,{radius:4,color:'#f4b000',fillColor:'#ffd45e',fillOpacity:1})));
+  if(measMode==='dist'&&measPts.length>1){measLayer.addLayer(L.polyline(measPts,{color:'#f4b000',weight:3}));let d=0;for(let i=1;i<measPts.length;i++)d+=haversine(measPts[i-1],measPts[i]);toast('Distance : '+d.toFixed(2)+' km');}
+  if(measMode==='area'&&measPts.length>2){measLayer.addLayer(L.polygon(measPts,{color:'#f4b000',fillColor:'#ffd45e',fillOpacity:.2,weight:2}));const a=polyArea(measPts);toast('Surface : '+(a/10000).toFixed(2)+' ha ('+(a/1e6).toFixed(3)+' km²)');}
+}
+$('#tDist').addEventListener('click',()=>{const on=measMode==='dist';resetMeas();measMode=on?null:'dist';$('#tDist').classList.toggle('on',!on);$('#tArea').classList.remove('on');toast(on?'Mesure arrêtée':'Touchez des points pour mesurer la distance');});
+$('#tArea').addEventListener('click',()=>{const on=measMode==='area';resetMeas();measMode=on?null:'area';$('#tArea').classList.toggle('on',!on);$('#tDist').classList.remove('on');toast(on?'Mesure arrêtée':'Touchez des points pour mesurer la surface');});
+
+/* ============ TRACE GPS ============ */
+let tracking=false,trackWatch=null,trackPts=[],trackLine=null;
+$('#tTrack').addEventListener('click',()=>{
+  if(!navigator.geolocation){toast('GPS non disponible');return;}
+  tracking=!tracking;$('#tTrack').classList.toggle('on',tracking);
+  if(tracking){trackPts=[];if(trackLine)map.removeLayer(trackLine);trackLine=L.polyline([],{color:'#ea5455',weight:4}).addTo(map);toast('Enregistrement de la trace…');
+    trackWatch=navigator.geolocation.watchPosition(p=>{const ll=[p.coords.latitude,p.coords.longitude];trackPts.push(ll);trackLine.setLatLngs(trackPts);map.panTo(ll);},()=>{},{enableHighAccuracy:true});
+  }else{if(trackWatch!=null)navigator.geolocation.clearWatch(trackWatch);let d=0;for(let i=1;i<trackPts.length;i++)d+=haversine(trackPts[i-1],trackPts[i]);toast('Trace enregistrée : '+d.toFixed(2)+' km, '+trackPts.length+' points');}
+});
+
+/* ============ GRILLE ============ */
+let gridLayer=null;
+$('#tGrid').addEventListener('click',()=>{
+  if(gridLayer){map.removeLayer(gridLayer);gridLayer=null;$('#tGrid').classList.remove('on');return;}
+  gridLayer=L.layerGroup().addTo(map);$('#tGrid').classList.add('on');
+  for(let la=-8;la<=6;la++)gridLayer.addLayer(L.polyline([[la,20],[la,32]],{color:'#ffffff',opacity:.18,weight:1}));
+  for(let ln=20;ln<=32;ln++)gridLayer.addLayer(L.polyline([[-8,ln],[6,ln]],{color:'#ffffff',opacity:.18,weight:1}));
+});
+
+/* clic carte : marqueur OU mesure */
+map.on('click',e=>{
+  if(markMode){addMarker(e.latlng.lat,e.latlng.lng,'Point');return;}
+  if(measMode){measPts.push([e.latlng.lat,e.latlng.lng]);redrawMeas();}
+});
+
+/* ============ RELEVE TERRAIN ============ */
+let surveys=JSON.parse(localStorage.getItem('umm_surveys')||'[]');
+function saveSurv(){localStorage.setItem('umm_surveys',JSON.stringify(surveys));}
+function renderSurv(){const el=$('#svList');if(!surveys.length){el.innerHTML='<small style="color:var(--muted)">Aucun relevé enregistré.</small>';return;}
+  el.innerHTML='<label class="lbl">RELEVÉS ('+surveys.length+')</label>'+surveys.map((s,i)=>`<div class="card" style="padding:9px"><div class="kv"><b>${s.name}</b><span class="badge b-blue">${s.min}</span></div><div class="kv"><span>${s.type}</span><span>${s.coord}</span></div><a href="#" data-sv="${i}" style="color:#ff8687;font-size:11px">Supprimer</a></div>`).join('');
+  el.querySelectorAll('[data-sv]').forEach(a=>a.addEventListener('click',ev=>{ev.preventDefault();surveys.splice(+a.dataset.sv,1);saveSurv();renderSurv();}));}
+renderSurv();
+$('#svGps').addEventListener('click',()=>{if(!navigator.geolocation){toast('GPS indisponible');return;}toast('Capture GPS…');navigator.geolocation.getCurrentPosition(p=>{$('#svCoord').value=fmtLatLng(p.coords.latitude,p.coords.longitude)+' (±'+Math.round(p.coords.accuracy)+'m)';toast('Position capturée');},e=>toast('GPS : '+e.message),{enableHighAccuracy:true});});
+$('#svSave').addEventListener('click',()=>{const name=$('#svName').value.trim();if(!name){toast('Donnez un intitulé');return;}
+  let coord=$('#svCoord').value||fmtLatLng(map.getCenter().lat,map.getCenter().lng);
+  surveys.unshift({name,type:$('#svType').value,min:$('#svMin').value,coord,note:$('#svNote').value,t:Date.now()});saveSurv();renderSurv();
+  const m=coord.match(/(-?\d+\.\d+), (-?\d+\.\d+)/);if(m)addMarker(parseFloat(m[1]),parseFloat(m[2]),name);
+  $('#svName').value='';$('#svNote').value='';$('#svCoord').value='';toast('Relevé enregistré');});
+
+/* ============ GEO-IA (regles hors ligne) ============ */
+$('#iaRun').addEventListener('click',()=>{
+  const b=map.getBounds();const inB=(la,ln)=>b.contains([la,ln]);
+  const riversIn=RIV.filter(r=>r.pts.some(p=>inB(p[0],p[1]))).length;
+  const ipisIn=IPIS.filter(s=>inB(s.lat,s.lng));
+  const camiIn=CAMI.filter(c=>inB(c.poly[0][0],c.poly[0][1]));
+  const libres=Math.max(0,camiIn.filter(c=>c.stat==='dechu').length);
+  let score=Math.min(100,riversIn*18+ipisIn.length*7+libres*9);
+  const niv=score>=66?{t:'ÉLEVÉ',b:'b-ok'}:score>=35?{t:'MODÉRÉ',b:'b-warn'}:{t:'FAIBLE',b:'b-bad'};
+  $('#iaOut').innerHTML=`<div class="card" style="text-align:center"><div style="font-size:34px;font-weight:800;color:var(--gold2)">${score}/100</div><span class="badge ${niv.b}">Potentiel alluvial ${niv.t}</span></div>
+  <div class="card"><h4>Facteurs détectés</h4>
+   <div class="kv"><span>Cours d'eau / vallées</span><b>${riversIn}</b></div>
+   <div class="kv"><span>Sites IPIS proches</span><b>${ipisIn.length}</b></div>
+   <div class="kv"><span>Carrés libres (déchus)</span><b>${libres}</b></div>
+   <div class="kv"><span>Carrés dans la zone</span><b>${camiIn.length}</b></div></div>
+  <div class="card"><h4>Recommandation</h4><small style="color:var(--muted);font-size:12px">${score>=66?'Zone prioritaire : cibler les bandes de 5–10 km le long des rivières et pré-télécharger le satellite pour reconnaissance terrain.':score>=35?'Zone à prospecter : confirmer par relevés terrain avant engagement.':'Potentiel limité ici : élargir la recherche vers les lits de rivière voisins.'}</small></div>`;
+});
+
+/* ============ EXPORT / IMPORT ============ */
+function allFeatures(){const f=[];markers.forEach(m=>f.push({type:'Feature',properties:{name:m.label,kind:'marker'},geometry:{type:'Point',coordinates:[m.lng,m.lat]}}));surveys.forEach(s=>{const mm=s.coord.match(/(-?\d+\.\d+), (-?\d+\.\d+)/);if(mm)f.push({type:'Feature',properties:{name:s.name,type:s.type,minerai:s.min,note:s.note},geometry:{type:'Point',coordinates:[parseFloat(mm[2]),parseFloat(mm[1])]}});});return f;}
+function dl(name,txt,mime){const bl=new Blob([txt],{type:mime});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=name;a.click();toast('Export : '+name);}
+$('#exGeo').addEventListener('click',()=>dl('unamdd_points.geojson',JSON.stringify({type:'FeatureCollection',features:allFeatures()},null,2),'application/json'));
+$('#exGpx').addEventListener('click',()=>{const w=allFeatures().map(f=>`<wpt lat="${f.geometry.coordinates[1]}" lon="${f.geometry.coordinates[0]}"><name>${(f.properties.name||'').replace(/[<>&]/g,'')}</name></wpt>`).join('');dl('unamdd_points.gpx',`<?xml version="1.0"?><gpx version="1.1" creator="UNAMDD Mining">${w}</gpx>`,'application/gpx+xml');});
+$('#exKml').addEventListener('click',()=>{const w=allFeatures().map(f=>`<Placemark><name>${(f.properties.name||'').replace(/[<>&]/g,'')}</name><Point><coordinates>${f.geometry.coordinates[0]},${f.geometry.coordinates[1]},0</coordinates></Point></Placemark>`).join('');dl('unamdd_points.kml',`<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>${w}</Document></kml>`,'application/vnd.google-earth.kml+xml');});
+$('#imp').addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;const rd=new FileReader();rd.onload=()=>{try{let n=0;const t=rd.result;if(file.name.match(/json/i)){const g=JSON.parse(t);(g.features||[]).forEach(f=>{if(f.geometry&&f.geometry.type==='Point'){addMarker(f.geometry.coordinates[1],f.geometry.coordinates[0],(f.properties&&f.properties.name)||'Import');n++;}});}
+  else{const re=/lat="(-?[\d.]+)"\s+lon="(-?[\d.]+)"|<coordinates>\s*(-?[\d.]+),(-?[\d.]+)/g;let m;while((m=re.exec(t))){if(m[1])addMarker(+m[1],+m[2],'Import');else addMarker(+m[4],+m[3],'Import');n++;}}
+  toast(n+' point(s) importé(s)');}catch(err){toast('Fichier illisible');}};rd.readAsText(file);});
+
+/* ============ OFFLINE + SYNC ============ */
+function updOff(){const b=map.getBounds();const w=haversine([b.getSouth(),b.getWest()],[b.getSouth(),b.getEast()]);const h=haversine([b.getSouth(),b.getWest()],[b.getNorth(),b.getWest()]);const km2=w*h;$('#offArea').textContent=km2.toFixed(0)+' km²';$('#offSize').textContent=(km2*0.045).toFixed(1)+' Mo (est.)';}
+$('#dOffline').addEventListener('click',updOff);
+$('#offBtn').addEventListener('click',()=>{const b=map.getBounds();let z=JSON.parse(localStorage.getItem('umm_zones')||'[]');z.push({c:fmtLatLng(map.getCenter().lat,map.getCenter().lng),z:map.getZoom(),t:Date.now()});localStorage.setItem('umm_zones',JSON.stringify(z));renderZones();toast('Zone enregistrée pour le mode hors-ligne');});
+function renderZones(){const z=JSON.parse(localStorage.getItem('umm_zones')||'[]');const el=$('#offList');if(!z.length){el.innerHTML='<small style="color:var(--muted)">Aucune zone enregistrée.</small>';return;}el.innerHTML=z.map(x=>`<div class="kv"><span>📍 ${x.c}</span><b>zoom ${x.z}</b></div>`).join('');}
+renderZones();
+function doSync(){$('#syncTime').textContent=new Date().toLocaleString('fr-FR');$('#syncCnt').textContent=CAMI.length+' carrés • '+IPIS.length+' sites IPIS';}
+$('#syncBtn').addEventListener('click',()=>{toast('Actualisation des carrés CAMI…');setTimeout(()=>{doSync();toast('Carrés CAMI à jour');},900);});
+doSync();
+
+/* ============ RAPPORT D'INCIDENT ============ */
+const incLayer=L.layerGroup().addTo(map);
+let incidents=JSON.parse(localStorage.getItem('umm_incidents')||'[]');
+let incSevVal=2;
+const SEVC={1:'#28c76f',2:'#ff9f43',3:'#ea5455',4:'#b4000a'};
+const SEVL={1:'Faible',2:'Moyenne',3:'Élevée',4:'Critique'};
+function saveInc(){localStorage.setItem('umm_incidents',JSON.stringify(incidents));}
+$$('#incSev .sv').forEach(sv=>sv.addEventListener('click',()=>{$$('#incSev .sv').forEach(x=>x.classList.remove('on'));sv.classList.add('on');incSevVal=+sv.dataset.sev;}));
+$('#incGps').addEventListener('click',()=>{if(!navigator.geolocation){toast('GPS indisponible');return;}toast('Capture GPS…');navigator.geolocation.getCurrentPosition(p=>{$('#incCoord').value=fmtLatLng(p.coords.latitude,p.coords.longitude);toast('Position capturée');},e=>toast('GPS : '+e.message),{enableHighAccuracy:true});});
+$('#incSave').addEventListener('click',()=>{
+  let coord=$('#incCoord').value;
+  if(!coord){const c=map.getCenter();coord=fmtLatLng(c.lat,c.lng);}
+  const m=coord.match(/(-?\d+\.\d+), (-?\d+\.\d+)/);if(!m){toast('Coordonnées manquantes');return;}
+  incidents.unshift({type:$('#incType').value,sev:incSevVal,lat:+m[1],lng:+m[2],desc:$('#incDesc').value,t:Date.now()});
+  saveInc();renderInc();renderIncMarkers();$('#incDesc').value='';$('#incCoord').value='';toast('Incident signalé');
+});
+function renderIncMarkers(){incLayer.clearLayers();incidents.forEach(it=>{
+  const col=SEVC[it.sev];
+  const mk=L.marker([it.lat,it.lng],{icon:L.divIcon({className:'',html:'<div style="font-size:20px;filter:drop-shadow(0 1px 2px #000)">🚨</div>',iconSize:[20,20],iconAnchor:[10,18]})});
+  mk.bindPopup('<b style="color:'+col+'">🚨 '+it.type+'</b><br>Gravité : '+SEVL[it.sev]+'<br>'+fmtLatLng(it.lat,it.lng)+(it.desc?'<br>'+it.desc.replace(/[<>&]/g,''):''));
+  incLayer.addLayer(mk);
+});}
+function renderInc(){const el=$('#incList');if(!incidents.length){el.innerHTML='<small style="color:var(--muted)">Aucun incident signalé.</small>';return;}
+  el.innerHTML='<label class="lbl">INCIDENTS ('+incidents.length+')</label>'+incidents.map((it,i)=>`<div class="inc"><div class="incdot" style="background:${SEVC[it.sev]}"></div><div style="flex:1"><b>${it.type}</b><div style="font-size:11px;color:var(--muted)">${SEVL[it.sev]} · ${fmtLatLng(it.lat,it.lng)}</div></div><a href="#" data-inc="${i}" style="color:#ff8687;font-size:11px">✕</a></div>`).join('');
+  el.querySelectorAll('[data-inc]').forEach(a=>a.addEventListener('click',ev=>{ev.preventDefault();incidents.splice(+a.dataset.inc,1);saveInc();renderInc();renderIncMarkers();}));}
+renderIncMarkers();renderInc();
+
+/* ============ TABLEAU DE BORD ============ */
+function renderDash(){
+  const total=CAMI.length;
+  const byStat={valide:0,instruction:0,dechu:0};CAMI.forEach(c=>byStat[c.stat]++);
+  const byProv={};for(const k in PROV)byProv[k]=0;CAMI.forEach(c=>byProv[c.prov]++);
+  const byMin={};CAMI.forEach(c=>byMin[c.minerai]=(byMin[c.minerai]||0)+1);
+  const pct=n=>Math.round(n/total*100);
+  const maxProv=Math.max(...Object.values(byProv));
+  const minColors={Or:'#f4b000',Coltan:'#9b8cff',Cassitérite:'#2fb6ff',Diamant:'#8fe3ff'};
+  const bar=(lbl,val,w,col)=>`<div class="bar"><div class="bl"><span>${lbl}</span><b>${val}</b></div><div class="bt"><div class="bf" style="width:${w}%;background:${col}"></div></div></div>`;
+  let h='<div class="kpi">';
+  h+=`<div class="k"><b>${total}</b><small>Carrés suivis</small></div>`;
+  h+=`<div class="k"><b style="color:#28c76f">${byStat.valide}</b><small>Valides</small></div>`;
+  h+=`<div class="k"><b style="color:#ff9f43">${byStat.instruction}</b><small>En instruction</small></div>`;
+  h+=`<div class="k"><b style="color:#ea5455">${byStat.dechu}</b><small>Déchus / libres</small></div>`;
+  h+='</div>';
+  h+='<div class="card"><h4>Répartition par statut</h4>';
+  h+=bar('Valides',byStat.valide+' ('+pct(byStat.valide)+'%)',pct(byStat.valide),'#28c76f');
+  h+=bar('En instruction',byStat.instruction+' ('+pct(byStat.instruction)+'%)',pct(byStat.instruction),'#ff9f43');
+  h+=bar('Déchus / libres',byStat.dechu+' ('+pct(byStat.dechu)+'%)',pct(byStat.dechu),'#ea5455');
+  h+='</div>';
+  h+='<div class="card"><h4>Carrés par province</h4>';
+  for(const k in PROV){const v=byProv[k];h+=bar(PROV[k].n,v,Math.round(v/maxProv*100),'#f4b000');}
+  h+='</div>';
+  h+='<div class="card"><h4>Carrés par minerai</h4>';
+  const maxMin=Math.max(...Object.values(byMin));
+  for(const k in byMin){h+=bar(k,byMin[k],Math.round(byMin[k]/maxMin*100),minColors[k]||'#9b8cff');}
+  h+='</div>';
+  h+=`<div class="card"><div class="kv"><span>Incidents signalés</span><b style="color:#ea5455">${incidents.length}</b></div><div class="kv"><span>Relevés terrain</span><b>${surveys.length}</b></div><div class="kv"><span>Dernière synchro</span><b>${$('#syncTime').textContent}</b></div></div>`;
+  h+='<small style="color:var(--muted);font-size:11px">Données CAMI/IPIS de démonstration. Chef du bureau technique : Ir MANSOUR MAB.</small>';
+  $('#dashBody').innerHTML=h;
+}
+
+/* ============ MULTILINGUE (FR / EN / SW) ============ */
+const I18N={
+  fr:{sub:'Carte CAMI • RDC',dLayers:'🧱 Couches',dGoto:'🎯 Coordonnées',dIncident:'🚨 Incident',dDash:'📊 Tableau de bord',dSurvey:'📝 Relevé',dIA:'🧠 Géo-IA',dData:'📂 Données',dOffline:'⬇️ Hors-ligne',dAbout:'ℹ️ À propos',search:'🔍 Code / lieu…',allprov:'Toutes provinces'},
+  en:{sub:'CAMI Map • DRC',dLayers:'🧱 Layers',dGoto:'🎯 Coordinates',dIncident:'🚨 Incident',dDash:'📊 Dashboard',dSurvey:'📝 Survey',dIA:'🧠 Geo-AI',dData:'📂 Data',dOffline:'⬇️ Offline',dAbout:'ℹ️ About',search:'🔍 Code / place…',allprov:'All provinces'},
+  sw:{sub:'Ramani ya CAMI • DRC',dLayers:'🧱 Tabaka',dGoto:'🎯 Kuratibu',dIncident:'🚨 Tukio',dDash:'📊 Dashibodi',dSurvey:'📝 Ukaguzi',dIA:'🧠 Geo-AI',dData:'📂 Data',dOffline:'⬇️ Nje ya mtandao',dAbout:'ℹ️ Kuhusu',search:'🔍 Msimbo / mahali…',allprov:'Majimbo yote'}
+};
+function applyLang(l){
+  const d=I18N[l]||I18N.fr;
+  $('#brandSub').textContent=d.sub;
+  ['dLayers','dGoto','dIncident','dDash','dSurvey','dIA','dData','dOffline','dAbout'].forEach(id=>{const e=$('#'+id);if(e)e.textContent=d[id];});
+  $('#search').placeholder=d.search;
+  const opt=$('#provSel').options[0];if(opt)opt.textContent=d.allprov;
+  localStorage.setItem('umm_lang',l);
+}
+$('#langSel').addEventListener('change',e=>applyLang(e.target.value));
+(function(){const l=localStorage.getItem('umm_lang')||'fr';$('#langSel').value=l;applyLang(l);})();
+</script>
+</body>
+</html>
